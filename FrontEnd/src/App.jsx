@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard/Dashboard'
 import LiveMap from './pages/Dashboard/LiveMap'
 import History from './pages/Dashboard/History'
 import Reliability from './pages/Dashboard/Reliability'
+import Support from './pages/Dashboard/Support'
 import './App.css'
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
         <Route path="/station" element={<Dashboard />} />
         <Route path="/history" element={<History />} />
         <Route path="/reliability" element={<Reliability />} />
+        <Route path="/support" element={<Support />} />
       </Routes>
     </BrowserRouter>
   )
