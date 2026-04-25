@@ -10,32 +10,94 @@ function TurnIcon({ modifier }) {
   const isLeft = mod.includes('left');
   const isRight = mod.includes('right');
   const isUturn = mod.includes('uturn');
-  
-  if (isUturn) return <svg className="w-6 h-6 text-volt-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M10 9l-6 6 6 6"/><path strokeLinecap="round" strokeLinejoin="round" d="M4 15h11a4 4 0 004-4V4"/></svg>;
-  if (isLeft) return <svg className="w-6 h-6 text-volt-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 14l-4-4 4-4"/><path strokeLinecap="round" strokeLinejoin="round" d="M5 10h11a4 4 0 014 4v6"/></svg>;
-  if (isRight) return <svg className="w-6 h-6 text-volt-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 14l4-4-4-4"/><path strokeLinecap="round" strokeLinejoin="round" d="M19 10H8a4 4 0 00-4 4v6"/></svg>;
-  
+
+  if (isUturn) return <svg className="w-6 h-6 text-volt-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M10 9l-6 6 6 6" /><path strokeLinecap="round" strokeLinejoin="round" d="M4 15h11a4 4 0 004-4V4" /></svg>;
+  if (isLeft) return <svg className="w-6 h-6 text-volt-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 14l-4-4 4-4" /><path strokeLinecap="round" strokeLinejoin="round" d="M5 10h11a4 4 0 014 4v6" /></svg>;
+  if (isRight) return <svg className="w-6 h-6 text-volt-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 14l4-4-4-4" /><path strokeLinecap="round" strokeLinejoin="round" d="M19 10H8a4 4 0 00-4 4v6" /></svg>;
+
   // straight
-  return <svg className="w-6 h-6 text-volt-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5"/><path strokeLinecap="round" strokeLinejoin="round" d="M5 12l7-7 7 7"/></svg>;
+  return <svg className="w-6 h-6 text-volt-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5" /><path strokeLinecap="round" strokeLinejoin="round" d="M5 12l7-7 7 7" /></svg>;
 }
+
+const getDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371e3;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+};
+
+const getTravelTimeMins = (distanceMeters) => {
+  const speedKmH = 40; // Assume 40 km/h average city speed
+  const hours = (distanceMeters / 1000) / speedKmH;
+  return Math.max(1, Math.ceil(hours * 60)); // At least 1 min
+};
 
 export default function LiveMap() {
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [location, setLocation] = useState(null); 
+  const [location, setLocation] = useState(null);
   const [heading, setHeading] = useState(0);
   const [selectedStation, setSelectedStation] = useState(null);
   const [routeCoords, setRouteCoords] = useState(null);
-  
+
   const [isRouting, setIsRouting] = useState(false);
-  const [isAutoFollow, setIsAutoFollow] = useState(true); 
+  const [isAutoFollow, setIsAutoFollow] = useState(true);
   const [navInstruction, setNavInstruction] = useState(null);
-  
+
   const [hasFetchedStations, setHasFetchedStations] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchLocation, setSearchLocation] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [locationError, setLocationError] = useState(false);
   const locationRef = useRef(null);
+
+  useEffect(() => {
+    if (!searchQuery.trim() || searchQuery.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5`);
+        const data = await res.json();
+        if (data) {
+          setSuggestions(data);
+          setShowSuggestions(true);
+        }
+      } catch (err) {
+        console.error("Suggestion fetch error:", err);
+      }
+    }, 500);
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
+
+  const handleSuggestionClick = (result) => {
+    const lat = parseFloat(result.lat);
+    const lng = parseFloat(result.lon);
+
+    setSearchLocation({ lat, lng });
+    setSearchQuery(result.display_name.split(',')[0]);
+    setShowSuggestions(false);
+    setSelectedStation(null);
+    setRouteCoords(null);
+    setIsRouting(false);
+    setIsAutoFollow(false);
+
+    setViewState(prev => ({
+      ...prev,
+      longitude: lng,
+      latitude: lat,
+      zoom: 14,
+      transitionDuration: 2000
+    }));
+
+    fetchStationsForLocation(lat, lng);
+  };
   const navigate = useNavigate();
 
   const [viewState, setViewState] = useState({
@@ -56,44 +118,36 @@ export default function LiveMap() {
     const interval = setInterval(() => setNow(Date.now()), 10000); // 10s tick
     return () => clearInterval(interval);
   }, []);
-  
+
   const API_KEYS = [
     'b506fd81-d7b5-463d-a901-62b5f5c35b42',
     'de24e0dc-a164-4af7-8cc0-80aaa394b74d',
     '65419a05-816b-4fff-97e8-b42c3a7a97f2',
     'cd054356-79e3-4e7d-a1ac-8f2f86e5bf0e',
     '96c22f97-d9b2-4ce6-adf4-2d33376f3c9b',
-    'f19c959c-9083-4e91-96cc-849e939eecff' 
+    'f19c959c-9083-4e91-96cc-849e939eecff'
   ];
 
   // Watch user location and heading
   useEffect(() => {
     if (!navigator.geolocation) {
-       setLocation({ lat: 37.7749, lng: -122.4194 });
-       return;
+      setLocationError(true);
+      return;
     }
 
     let lastLat = null;
     let lastLng = null;
 
-    const getDistance = (lat1, lon1, lat2, lon2) => {
-      const R = 6371e3;
-      const dLat = (lat2 - lat1) * Math.PI/180;
-      const dLon = (lon2 - lon1) * Math.PI/180;
-      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * 
-                Math.sin(dLon/2) * Math.sin(dLon/2);
-      return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
-    };
+
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         const newLat = position.coords.latitude;
         const newLng = position.coords.longitude;
-        
+
         let distance = 0;
         if (lastLat !== null && lastLng !== null) {
-           distance = getDistance(lastLat, lastLng, newLat, newLng);
+          distance = getDistance(lastLat, lastLng, newLat, newLng);
         }
 
         if (lastLat === null || distance > 3) {
@@ -110,24 +164,24 @@ export default function LiveMap() {
             const destLng = newLng * Math.PI / 180;
             const y = Math.sin(destLng - startLng) * Math.cos(destLat);
             const x = Math.cos(startLat) * Math.sin(destLat) -
-                      Math.sin(startLat) * Math.cos(destLat) * Math.cos(destLng - startLng);
+              Math.sin(startLat) * Math.cos(destLat) * Math.cos(destLng - startLng);
             let brng = Math.atan2(y, x);
             brng = brng * 180 / Math.PI;
             currentHeading = (brng + 360) % 360;
           }
-          
+
           setHeading(currentHeading);
 
           if (isAutoFollowRef.current) {
-             setViewState(prev => ({
-                ...prev,
-                longitude: newLng,
-                latitude: newLat,
-                zoom: isRoutingRef.current ? 18 : 14,
-                pitch: isRoutingRef.current ? 65 : 0,
-                bearing: isRoutingRef.current ? currentHeading : 0,
-                transitionDuration: 1000
-             }));
+            setViewState(prev => ({
+              ...prev,
+              longitude: newLng,
+              latitude: newLat,
+              zoom: isRoutingRef.current ? 18 : 14,
+              pitch: isRoutingRef.current ? 65 : 0,
+              bearing: isRoutingRef.current ? currentHeading : 0,
+              transitionDuration: 1000
+            }));
           }
 
           lastLat = newLat;
@@ -136,9 +190,7 @@ export default function LiveMap() {
       },
       (error) => {
         console.error("Location error:", error);
-        if (!locationRef.current) {
-          setLocation({ lat: 37.7749, lng: -122.4194 });
-        }
+        setLocationError(true);
       },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 5000 }
     );
@@ -166,16 +218,16 @@ export default function LiveMap() {
 
   useEffect(() => {
     if (!location || hasFetchedStations) return;
-    
+
     setHasFetchedStations(true);
     setViewState(prev => ({
-       ...prev,
-       longitude: location.lng,
-       latitude: location.lat,
-       zoom: 14,
-       transitionDuration: 2000
+      ...prev,
+      longitude: location.lng,
+      latitude: location.lat,
+      zoom: 14,
+      transitionDuration: 2000
     }));
-    
+
     fetchStationsForLocation(location.lat, location.lng);
   }, [location, hasFetchedStations]);
 
@@ -198,34 +250,36 @@ export default function LiveMap() {
 
   const handleStartRoute = async () => {
     if (!selectedStation || !location) return;
-    
+
     setIsRouting(true);
     setIsAutoFollow(true);
-    
+
     setViewState(prev => ({
-       ...prev,
-       zoom: 18,
-       pitch: 65,
-       bearing: heading,
-       transitionDuration: 2000
+      ...prev,
+      longitude: location.lng,
+      latitude: location.lat,
+      zoom: 18,
+      pitch: 65,
+      bearing: heading,
+      transitionDuration: 2000
     }));
-    
+
     try {
       const startLng = location.lng;
       const startLat = location.lat;
       const endLng = selectedStation.AddressInfo.Longitude;
       const endLat = selectedStation.AddressInfo.Latitude;
-      
+
       const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson&steps=true`);
       const data = await res.json();
-      
+
       if (data.routes && data.routes.length > 0) {
         // GeoJSON uses [lng, lat], which MapLibre perfectly accepts natively!
         setRouteCoords(data.routes[0].geometry.coordinates);
 
         const steps = data.routes[0].legs[0].steps;
         if (steps && steps.length > 1) {
-          const nextStep = steps[1]; 
+          const nextStep = steps[1];
           setNavInstruction({
             modifier: nextStep.maneuver.modifier || 'straight',
             name: nextStep.name,
@@ -244,7 +298,8 @@ export default function LiveMap() {
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
-    
+
+    setShowSuggestions(false);
     setIsSearching(true);
     try {
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
@@ -253,21 +308,21 @@ export default function LiveMap() {
         const result = data[0];
         const lat = parseFloat(result.lat);
         const lng = parseFloat(result.lon);
-        
+
         setSearchLocation({ lat, lng });
         setSelectedStation(null);
         setRouteCoords(null);
         setIsRouting(false);
         setIsAutoFollow(false);
-        
+
         setViewState(prev => ({
-           ...prev,
-           longitude: lng,
-           latitude: lat,
-           zoom: 14,
-           transitionDuration: 2000
+          ...prev,
+          longitude: lng,
+          latitude: lat,
+          zoom: 14,
+          transitionDuration: 2000
         }));
-        
+
         fetchStationsForLocation(lat, lng);
       } else {
         alert("Location not found. Please try a different search.");
@@ -283,10 +338,10 @@ export default function LiveMap() {
     const id = station.ID || 1;
     const cycleDurationMinutes = (id % 30) + 20; // 20 to 49 minutes
     const cycleDurationMs = cycleDurationMinutes * 60 * 1000;
-    
+
     const timeInCycle = timeMs % cycleDurationMs;
     const isOccupiedPhase = timeInCycle < (cycleDurationMs * 0.8);
-    
+
     if (isOccupiedPhase) {
       const occupiedTimeRemainingMs = (cycleDurationMs * 0.8) - timeInCycle;
       const waitMins = Math.ceil(occupiedTimeRemainingMs / 60000);
@@ -300,15 +355,15 @@ export default function LiveMap() {
     // 1. Check actual OpenChargeMap API real-time data first
     if (station.StatusType?.IsOperational === false || station.StatusType?.ID === 100) return { status: 'OFFLINE', waitTime: 'N/A' };
     if (station.StatusType?.ID === 20 || station.StatusType?.ID === 210) return { status: 'OCCUPIED', waitTime: 'Unknown' };
-    
+
     if (station.Connections && station.Connections.length > 0) {
       const anyInUse = station.Connections.some(c => c.StatusType?.ID === 20 || c.StatusTypeID === 20 || c.StatusTypeID === 210);
       if (anyInUse) return { status: 'OCCUPIED', waitTime: 'Unknown' };
-      
+
       const allOut = station.Connections.every(c => c.StatusType?.ID === 100 || c.StatusTypeID === 100 || c.StatusType?.IsOperational === false);
       if (allOut) return { status: 'OFFLINE', waitTime: 'N/A' };
     }
-    
+
     // 2. Fallback to simulation to ensure UI can be demonstrated since OCM often lacks live telemetry
     if (station.ID && station.ID % 13 === 0) return { status: 'OFFLINE', waitTime: 'N/A' };
     if (station.ID && station.ID % 3 === 0) return getSimulatedStationState(station, timeMs);
@@ -328,29 +383,10 @@ export default function LiveMap() {
     return max > 0 ? max : 'Unknown ';
   };
 
-  if (!location) {
-    return (
-      <div className="flex h-screen w-screen bg-[#0a0f0d] font-inter text-white overflow-hidden">
-        <Sidebar activePage="map" />
-        <div className="flex flex-col flex-1 h-screen relative">
-          <Header />
-          <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-br from-[#1b2b23] via-[#0a0f0d] to-[#0a0f0d]">
-             <div className="relative w-24 h-24 flex items-center justify-center mb-6">
-                <div className="absolute inset-0 border-4 border-[#222] rounded-full"></div>
-                <div className="absolute inset-0 border-4 border-volt-green rounded-full border-t-transparent animate-spin"></div>
-                <svg className="w-8 h-8 text-volt-green animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-             </div>
-             <h2 className="text-2xl font-bold tracking-widest text-white mb-2">AQUIRING SIGNAL</h2>
-             <p className="text-neutral-500 text-sm font-medium tracking-wide">Waiting for precise GPS location...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-screen w-screen bg-[#0a0f0d] font-inter text-white overflow-hidden">
-      
+
       <Sidebar activePage="map" />
 
       <div className="flex flex-col flex-1 h-screen relative">
@@ -366,14 +402,30 @@ export default function LiveMap() {
             style={{ width: '100%', height: '100%' }}
             pitchWithGestures={true}
             dragRotate={true}
+            touchZoomRotate={true}
+            touchPitch={true}
           >
             {/* Native 3D Controls (Compass & Zoom) */}
             <NavigationControl position="bottom-right" style={{ marginRight: 24, marginBottom: 90 }} showCompass={true} showZoom={true} />
 
+            {/* Status Banners for Location */}
+            {locationError && !location && (
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-2 rounded-lg text-xs font-bold tracking-wider z-[1000] backdrop-blur-md shadow-2xl">
+                LOCATION DENIED: USE SEARCH TO FIND STATIONS
+              </div>
+            )}
+            {!locationError && !location && (
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-yellow-500/20 border border-yellow-500/50 text-yellow-200 px-4 py-2 rounded-lg text-xs font-bold tracking-wider z-[1000] backdrop-blur-md flex items-center gap-2 shadow-2xl">
+                <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                ACQUIRING GPS SIGNAL...
+              </div>
+            )}
+
             {/* User Navigation Arrow (Lies flat on ground in 3D, rotates perfectly) */}
-            <Marker 
-              longitude={location.lng} 
-              latitude={location.lat} 
+            {location && (
+            <Marker
+              longitude={location.lng}
+              latitude={location.lat}
               anchor="center"
               pitchAlignment={isRouting ? "map" : "viewport"}
               rotationAlignment={isRouting ? "map" : "viewport"}
@@ -381,7 +433,7 @@ export default function LiveMap() {
             >
               {isRouting ? (
                 <svg width="64" height="64" viewBox="0 0 48 48" fill="none" style={{ filter: 'drop-shadow(0 0 15px rgba(204,230,0,0.8))' }}>
-                  <path d="M24 4L42 42L24 34L6 42L24 4Z" fill="#cce600" stroke="#111" strokeWidth="2" strokeLinejoin="round"/>
+                  <path d="M24 4L42 42L24 34L6 42L24 4Z" fill="#cce600" stroke="#111" strokeWidth="2" strokeLinejoin="round" />
                 </svg>
               ) : (
                 <div className="flex flex-col items-center">
@@ -390,6 +442,7 @@ export default function LiveMap() {
                 </div>
               )}
             </Marker>
+            )}
 
             {/* Station Markers (Billboard style - always upright) */}
             {!loading && stations.map((station, index) => {
@@ -428,9 +481,9 @@ export default function LiveMap() {
 
             {/* Glowing 3D Route Display */}
             {routeCoords && (
-              <Source 
-                id="route-source" 
-                type="geojson" 
+              <Source
+                id="route-source"
+                type="geojson"
                 data={{
                   type: 'Feature',
                   properties: {},
@@ -440,17 +493,17 @@ export default function LiveMap() {
                   }
                 }}
               >
-                <Layer 
-                  id="route-glow" 
-                  type="line" 
+                <Layer
+                  id="route-glow"
+                  type="line"
                   layout={{ 'line-join': 'round', 'line-cap': 'round' }}
-                  paint={{ 'line-color': '#cce600', 'line-width': 12, 'line-opacity': 0.3, 'line-blur': 4 }} 
+                  paint={{ 'line-color': '#cce600', 'line-width': 12, 'line-opacity': 0.3, 'line-blur': 4 }}
                 />
-                <Layer 
-                  id="route-line" 
-                  type="line" 
+                <Layer
+                  id="route-line"
+                  type="line"
                   layout={{ 'line-join': 'round', 'line-cap': 'round' }}
-                  paint={{ 'line-color': '#cce600', 'line-width': 5 }} 
+                  paint={{ 'line-color': '#cce600', 'line-width': 5 }}
                 />
               </Source>
             )}
@@ -473,7 +526,7 @@ export default function LiveMap() {
 
           {/* RESUME NAVIGATION BUTTON */}
           {isRouting && !isAutoFollow && (
-            <button 
+            <button
               onClick={() => {
                 setIsAutoFollow(true);
                 if (location) {
@@ -490,15 +543,15 @@ export default function LiveMap() {
               }}
               className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-volt-green text-black px-6 py-3 rounded-full font-bold shadow-[0_10px_30px_rgba(204,230,0,0.3)] z-[1000] flex items-center gap-2 hover:bg-[#b3cc00] transition-transform hover:scale-105 active:scale-95 animate-in slide-in-from-bottom-8 duration-300"
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               RESUME
             </button>
           )}
 
           {/* Locate Me Bottom Right */}
           <div className="absolute bottom-8 right-6 z-[1000]">
-            <button 
-              onClick={() => { 
+            <button
+              onClick={() => {
                 setIsAutoFollow(true);
                 if (location) {
                   if (searchLocation) {
@@ -520,31 +573,48 @@ export default function LiveMap() {
               title="Locate Me"
               className="w-10 h-10 bg-[#292929]/90 backdrop-blur-md border border-[#444] rounded flex items-center justify-center text-white hover:bg-[#333] transition-colors shadow-lg"
             >
-              <svg className="w-5 h-5 text-volt-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <svg className="w-5 h-5 text-volt-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             </button>
           </div>
 
           {/* Left Floating Panel (Nearby Stations) */}
           {!isRouting && (
             <div className="absolute top-6 left-6 md:w-[360px] w-full px-6 md:px-0 flex flex-col gap-4 z-[1000] h-[calc(100%-48px)] pointer-events-none">
-              
+
               {/* Search Bar & Live Location */}
               <div className="bg-[#161616]/95 backdrop-blur-xl border border-[#2c2c2c] rounded-2xl p-4 shadow-2xl pointer-events-auto shrink-0 flex flex-col gap-3">
-                <form onSubmit={handleSearch} className="relative flex items-center">
-                  <input 
-                    type="text" 
-                    placeholder="Search by location..." 
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-[#111] border border-[#333] text-white text-sm rounded-xl pl-10 pr-20 py-3 focus:outline-none focus:border-volt-green transition-colors shadow-inner"
-                  />
-                  <svg className="absolute left-3.5 w-5 h-5 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35"/></svg>
-                  <button type="submit" disabled={isSearching} className="absolute right-2 bg-volt-green text-black px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-[#b3cc00] transition-colors disabled:opacity-50">
-                    {isSearching ? '...' : 'SEARCH'}
-                  </button>
-                </form>
-                
-                <button 
+                <div className="relative">
+                  <form onSubmit={handleSearch} className="relative flex items-center">
+                    <input
+                      type="text"
+                      placeholder="Search by location..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+                      className="w-full bg-[#111] border border-[#333] text-white text-sm rounded-xl pl-10 pr-20 py-3 focus:outline-none focus:border-volt-green transition-colors shadow-inner"
+                    />
+                    <svg className="absolute left-3.5 w-5 h-5 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" /></svg>
+                    <button type="submit" disabled={isSearching} className="absolute right-2 bg-volt-green text-black px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-[#b3cc00] transition-colors disabled:opacity-50">
+                      {isSearching ? '...' : 'SEARCH'}
+                    </button>
+                  </form>
+                  {showSuggestions && suggestions.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-[#111] border border-[#333] rounded-xl overflow-hidden z-[1010] shadow-2xl">
+                      {suggestions.map((s, idx) => (
+                        <div
+                          key={idx}
+                          className="px-4 py-3 hover:bg-[#222] cursor-pointer text-sm text-neutral-300 border-b border-[#222] last:border-0 transition-colors"
+                          onClick={() => handleSuggestionClick(s)}
+                        >
+                          <span className="text-white font-bold block">{s.display_name.split(',')[0]}</span>
+                          <span className="text-xs text-neutral-500 truncate block mt-0.5">{s.display_name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button
                   onClick={() => {
                     setIsAutoFollow(true);
                     if (location) {
@@ -566,7 +636,7 @@ export default function LiveMap() {
                   }}
                   className="w-full flex items-center justify-center gap-2 bg-[#1c2c20] hover:bg-[#253a2a] border border-volt-green/30 text-volt-green py-2.5 rounded-xl text-[11px] font-bold tracking-widest transition-colors shadow-inner"
                 >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                   NAVIGATE TO LIVE LOCATION
                 </button>
               </div>
@@ -582,7 +652,7 @@ export default function LiveMap() {
                     <span className="w-1.5 h-1.5 bg-black rounded-full"></span> AVAILABLE NOW
                   </button>
                   <button className="bg-[#222] text-neutral-400 hover:text-white px-4 py-2 rounded-full text-[10px] font-bold tracking-wide flex items-center gap-1.5 transition-colors border border-[#333]">
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                     FAST CHARGE
                   </button>
                 </div>
@@ -600,11 +670,11 @@ export default function LiveMap() {
                       const isOp = status !== 'OFFLINE';
                       const isAvail = status === 'AVAILABLE';
                       const power = getPower(station.Connections);
-                      
+
                       return (
-                        <div 
-                          key={station.ID || i} 
-                          onClick={() => setSelectedStation(station)} 
+                        <div
+                          key={station.ID || i}
+                          onClick={() => setSelectedStation(station)}
                           className={`bg-[#1c1c1c] border border-[#2c2c2c] rounded-xl p-4 transition-colors cursor-pointer group ${isOp ? (isAvail ? 'hover:border-volt-green/50 hover:bg-[#1c2c20]' : 'hover:border-yellow-500/50 hover:bg-[#2c2a1c]') : 'opacity-60'} ${selectedStation?.ID === station.ID ? (isAvail ? 'border-volt-green/50 bg-[#1c2c20]' : status === 'OCCUPIED' ? 'border-yellow-500/50 bg-[#2c2a1c]' : 'border-neutral-500 bg-[#222]') : ''}`}
                         >
                           <div className="flex justify-between items-start mb-2">
@@ -618,15 +688,21 @@ export default function LiveMap() {
                           <p className="text-neutral-400 text-[10px] font-bold tracking-widest uppercase mb-3 truncate">
                             {station.AddressInfo.AddressLine1}
                           </p>
-                          
+
                           <div className="flex items-center gap-6 mt-1">
                             <div className={`flex items-center gap-1.5 ${isAvail ? 'text-volt-green' : status === 'OCCUPIED' ? 'text-yellow-500' : 'text-neutral-500'}`}>
-                               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                               <span className="font-bold text-[15px]">{power} <span className="text-[11px] text-neutral-400 font-medium">kW</span></span>
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                              <span className="font-bold text-[15px]">{power} <span className="text-[11px] text-neutral-400 font-medium">kW</span></span>
                             </div>
                             <div className="flex items-center gap-1.5 text-neutral-300">
-                               <svg className="w-4 h-4 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2"/></svg>
-                               <span className="text-[13px]">Wait: <span className={isAvail ? 'text-volt-green font-medium' : status === 'OCCUPIED' ? 'text-yellow-500 font-medium' : 'text-neutral-500 font-medium'}>{isAvail ? '0 mins' : status === 'OCCUPIED' ? `${waitTime} mins` : 'N/A'}</span></span>
+                              <svg className="w-4 h-4 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2" /></svg>
+                              <span className="text-[13px]">Wait: <span className={isAvail ? 'text-volt-green font-medium' : status === 'OCCUPIED' ? 'text-yellow-500 font-medium' : 'text-neutral-500 font-medium'}>{isAvail ? '0 mins' : status === 'OCCUPIED' ? `${waitTime} mins` : 'N/A'}</span></span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-neutral-300">
+                              <svg className="w-4 h-4 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 22s-8-4.5-8-11.8A8 8 0 0112 2a8 8 0 018 8.2c0 7.3-8 11.8-8 11.8z" /><circle cx="12" cy="10" r="3" /></svg>
+                              <span className="text-[13px] font-medium text-volt-green">
+                                {location ? `${getTravelTimeMins(getDistance(location.lat, location.lng, station.AddressInfo.Latitude, station.AddressInfo.Longitude))} mins away` : 'Calc...'}
+                              </span>
                             </div>
                           </div>
 
@@ -634,7 +710,7 @@ export default function LiveMap() {
                             <span className="text-neutral-400 text-[10px] font-bold tracking-widest uppercase">
                               {station.Connections?.length || 0}/12 PLUGS OPEN
                             </span>
-                            <svg className="w-4 h-4 text-neutral-500 group-hover:text-white transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
+                            <svg className="w-4 h-4 text-neutral-500 group-hover:text-white transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
                           </div>
                         </div>
                       )
@@ -651,7 +727,7 @@ export default function LiveMap() {
               <div className="flex items-start gap-4">
                 <div className="w-14 h-14 rounded-xl bg-[#222] border border-[#333] flex items-center justify-center shrink-0">
                   <svg className="w-7 h-7 text-volt-green" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>
+                    <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z" />
                   </svg>
                 </div>
                 <div className="flex-1 pr-4 pt-1">
@@ -669,11 +745,11 @@ export default function LiveMap() {
                     );
                   })()}
                 </div>
-                <button 
+                <button
                   className="text-neutral-500 hover:text-white absolute top-4 right-4"
                   onClick={() => setSelectedStation(null)}
                 >
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
 
@@ -688,20 +764,20 @@ export default function LiveMap() {
                 </div>
                 <div className="bg-[#1c1c1c] border border-[#2c2c2c] rounded-xl p-3 flex flex-col items-center justify-center">
                   <span className="text-neutral-500 text-[9px] font-bold tracking-widest uppercase mb-1">PRICE</span>
-                  <span className="text-white font-bold text-[15px]">{selectedStation.UsageCost || '$0.42'}</span>
+                  <span className="text-white font-bold text-[15px]">{selectedStation.UsageCost ? selectedStation.UsageCost.replace(/\$/g, '₹').replace(/EUR/g, '₹') : '₹18.50/kWh'}</span>
                 </div>
               </div>
 
-              <button 
+              <button
                 onClick={handleStartRoute}
                 disabled={isRouting}
                 className="w-full bg-volt-green hover:bg-[#b3cc00] text-black font-bold py-3.5 rounded-xl transition-colors flex items-center justify-center gap-2 mt-2 shadow-[0_4px_20px_rgba(204,230,0,0.2)] disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {isRouting && !routeCoords ? (
-                   <span className="animate-pulse">CALCULATING ROUTE...</span>
+                  <span className="animate-pulse">CALCULATING ROUTE...</span>
                 ) : (
                   <>
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
                     {routeCoords ? 'NAVIGATING...' : 'START ROUTE'}
                   </>
                 )}
@@ -711,8 +787,9 @@ export default function LiveMap() {
 
         </div>
       </div>
-      
-      <style dangerouslySetInnerHTML={{__html: `
+
+      <style dangerouslySetInnerHTML={{
+        __html: `
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;
         }

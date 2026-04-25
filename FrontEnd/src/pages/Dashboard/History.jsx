@@ -1,8 +1,71 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Sidebar from '../../components/Sidebar';
 import Header from '../../components/Header';
 
 export default function History() {
+  const [historyData] = useState([
+    {
+      id: 1,
+      date: "Oct 24, 2023",
+      time: "14:22 PM",
+      station: "Superhub DTLA #04",
+      type: "DC FAST",
+      isFast: true,
+      energy: 42.8,
+      cost: 18.40,
+      carbon: 12.4,
+      status: "COMPLETED"
+    },
+    {
+      id: 2,
+      date: "Oct 22, 2023",
+      time: "08:15 AM",
+      station: "Residential Wallbox",
+      type: "LEVEL 2",
+      isFast: false,
+      energy: 18.2,
+      cost: 2.54,
+      carbon: 5.3,
+      status: "COMPLETED"
+    },
+    {
+      id: 3,
+      date: "Oct 20, 2023",
+      time: "19:45 PM",
+      station: "Electrify Mall West",
+      type: "DC FAST",
+      isFast: true,
+      energy: 64.5,
+      cost: 24.12,
+      carbon: 18.7,
+      status: "COMPLETED"
+    },
+    {
+      id: 4,
+      date: "Oct 15, 2023",
+      time: "11:30 AM",
+      station: "Whole Foods Market",
+      type: "LEVEL 2",
+      isFast: false,
+      energy: 22.0,
+      cost: 5.50,
+      carbon: 6.1,
+      status: "COMPLETED"
+    },
+    {
+      id: 5,
+      date: "Oct 12, 2023",
+      time: "16:10 PM",
+      station: "Target Parking Lot",
+      type: "DC FAST",
+      isFast: true,
+      energy: 35.5,
+      cost: 15.20,
+      carbon: 10.2,
+      status: "COMPLETED"
+    }
+  ]);
+
   return (
     <div className="flex h-screen w-screen bg-[#0a0f0d] font-inter text-white overflow-hidden">
       
@@ -92,127 +155,50 @@ export default function History() {
                   </tr>
                 </thead>
                 <tbody className="text-sm">
-                  
-                  {/* Row 1 */}
-                  <tr className="border-b border-[#2c2c2c] hover:bg-[#1c1c1c] transition-colors">
-                    <td className="py-5 px-6">
-                      <div className="font-bold text-white">Oct 24, 2023</div>
-                      <div className="text-neutral-500 text-xs">14:22 PM</div>
-                    </td>
-                    <td className="py-5 px-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded bg-[#1c2c20] border border-[#2a4530] flex items-center justify-center shrink-0">
-                          <svg className="w-4 h-4 text-volt-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                  {historyData.map((session) => (
+                    <tr key={session.id} className="border-b border-[#2c2c2c] hover:bg-[#1c1c1c] transition-colors">
+                      <td className="py-5 px-6">
+                        <div className="font-bold text-white">{session.date}</div>
+                        <div className="text-neutral-500 text-xs">{session.time}</div>
+                      </td>
+                      <td className="py-5 px-6">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded border flex items-center justify-center shrink-0 ${session.isFast ? 'bg-[#1c2c20] border-[#2a4530]' : 'bg-[#222] border-[#333]'}`}>
+                            {session.isFast ? (
+                              <svg className="w-4 h-4 text-volt-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                            ) : (
+                              <svg className="w-4 h-4 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-bold text-white mb-0.5">{session.station}</div>
+                            <span className="bg-[#2c2c2c] text-neutral-300 px-1.5 py-0.5 rounded text-[8px] font-bold tracking-widest uppercase">{session.type}</span>
+                          </div>
                         </div>
-                        <div>
-                          <div className="font-bold text-white mb-0.5">Superhub DTLA #04</div>
-                          <span className="bg-[#2c2c2c] text-neutral-300 px-1.5 py-0.5 rounded text-[8px] font-bold tracking-widest uppercase">DC FAST</span>
+                      </td>
+                      <td className="py-5 px-6">
+                        <div className="flex items-baseline gap-1">
+                          <span className="font-bold text-white">{session.energy.toFixed(1)}</span>
+                          <span className="text-xs text-neutral-500">kWh</span>
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-5 px-6">
-                      <div className="flex items-baseline gap-1">
-                        <span className="font-bold text-white">42.8</span>
-                        <span className="text-xs text-neutral-500">kWh</span>
-                      </div>
-                    </td>
-                    <td className="py-5 px-6 font-bold text-white">$18.40</td>
-                    <td className="py-5 px-6 font-bold text-volt-green flex items-center gap-1.5">
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/></svg>
-                      12.4 kg
-                    </td>
-                    <td className="py-5 px-6">
-                      <div className="flex items-center justify-between">
-                        <span className="bg-volt-green/10 text-volt-green border border-volt-green/20 px-2.5 py-1 rounded-full text-[9px] font-bold tracking-widest uppercase">
-                          COMPLETED
-                        </span>
-                        <button className="text-neutral-500 hover:text-white transition-colors">
-                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* Row 2 */}
-                  <tr className="border-b border-[#2c2c2c] hover:bg-[#1c1c1c] transition-colors">
-                    <td className="py-5 px-6">
-                      <div className="font-bold text-white">Oct 22, 2023</div>
-                      <div className="text-neutral-500 text-xs">08:15 AM</div>
-                    </td>
-                    <td className="py-5 px-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded bg-[#222] border border-[#333] flex items-center justify-center shrink-0">
-                          <svg className="w-4 h-4 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                      </td>
+                      <td className="py-5 px-6 font-bold text-white">${session.cost.toFixed(2)}</td>
+                      <td className="py-5 px-6 font-bold text-volt-green flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/></svg>
+                        {session.carbon.toFixed(1)} kg
+                      </td>
+                      <td className="py-5 px-6">
+                        <div className="flex items-center justify-between">
+                          <span className="bg-volt-green/10 text-volt-green border border-volt-green/20 px-2.5 py-1 rounded-full text-[9px] font-bold tracking-widest uppercase">
+                            {session.status}
+                          </span>
+                          <button className="text-neutral-500 hover:text-white transition-colors">
+                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                          </button>
                         </div>
-                        <div>
-                          <div className="font-bold text-white mb-0.5">Residential Wallbox</div>
-                          <span className="bg-[#2c2c2c] text-neutral-300 px-1.5 py-0.5 rounded text-[8px] font-bold tracking-widest uppercase">LEVEL 2</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-5 px-6">
-                      <div className="flex items-baseline gap-1">
-                        <span className="font-bold text-white">18.2</span>
-                        <span className="text-xs text-neutral-500">kWh</span>
-                      </div>
-                    </td>
-                    <td className="py-5 px-6 font-bold text-white">$2.54</td>
-                    <td className="py-5 px-6 font-bold text-volt-green flex items-center gap-1.5">
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/></svg>
-                      5.3 kg
-                    </td>
-                    <td className="py-5 px-6">
-                      <div className="flex items-center justify-between">
-                        <span className="bg-volt-green/10 text-volt-green border border-volt-green/20 px-2.5 py-1 rounded-full text-[9px] font-bold tracking-widest uppercase">
-                          COMPLETED
-                        </span>
-                        <button className="text-neutral-500 hover:text-white transition-colors">
-                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* Row 3 */}
-                  <tr className="border-b border-[#2c2c2c] hover:bg-[#1c1c1c] transition-colors">
-                    <td className="py-5 px-6">
-                      <div className="font-bold text-white">Oct 20, 2023</div>
-                      <div className="text-neutral-500 text-xs">19:45 PM</div>
-                    </td>
-                    <td className="py-5 px-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded bg-[#1c2c20] border border-[#2a4530] flex items-center justify-center shrink-0">
-                          <svg className="w-4 h-4 text-volt-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                        </div>
-                        <div>
-                          <div className="font-bold text-white mb-0.5">Electrify Mall West</div>
-                          <span className="bg-[#2c2c2c] text-neutral-300 px-1.5 py-0.5 rounded text-[8px] font-bold tracking-widest uppercase">DC FAST</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-5 px-6">
-                      <div className="flex items-baseline gap-1">
-                        <span className="font-bold text-white">64.5</span>
-                        <span className="text-xs text-neutral-500">kWh</span>
-                      </div>
-                    </td>
-                    <td className="py-5 px-6 font-bold text-white">$24.12</td>
-                    <td className="py-5 px-6 font-bold text-volt-green flex items-center gap-1.5">
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/></svg>
-                      18.7 kg
-                    </td>
-                    <td className="py-5 px-6">
-                      <div className="flex items-center justify-between">
-                        <span className="bg-volt-green/10 text-volt-green border border-volt-green/20 px-2.5 py-1 rounded-full text-[9px] font-bold tracking-widest uppercase">
-                          COMPLETED
-                        </span>
-                        <button className="text-neutral-500 hover:text-white transition-colors">
-                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
               
