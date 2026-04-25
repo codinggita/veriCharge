@@ -56,6 +56,52 @@ export default function LiveMap() {
   const [locationError, setLocationError] = useState(false);
   const locationRef = useRef(null);
 
+  // Trip Planner State
+  const [tripPlanMode, setTripPlanMode] = useState(false);
+  const [tripStart, setTripStart] = useState('');
+  const [tripDest, setTripDest] = useState('');
+  const [isPlanningTrip, setIsPlanningTrip] = useState(false);
+  const [tripStartSuggestions, setTripStartSuggestions] = useState([]);
+  const [showTripStartSuggestions, setShowTripStartSuggestions] = useState(false);
+  const [tripDestSuggestions, setTripDestSuggestions] = useState([]);
+  const [showTripDestSuggestions, setShowTripDestSuggestions] = useState(false);
+
+  useEffect(() => {
+    if (!tripStart.trim() || tripStart.length < 3) {
+      setTripStartSuggestions([]);
+      return;
+    }
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(tripStart)}&limit=5`);
+        const data = await res.json();
+        if (data) {
+          setTripStartSuggestions(data);
+          setShowTripStartSuggestions(true);
+        }
+      } catch (err) {}
+    }, 500);
+    return () => clearTimeout(delayDebounceFn);
+  }, [tripStart]);
+
+  useEffect(() => {
+    if (!tripDest.trim() || tripDest.length < 3) {
+      setTripDestSuggestions([]);
+      return;
+    }
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(tripDest)}&limit=5`);
+        const data = await res.json();
+        if (data) {
+          setTripDestSuggestions(data);
+          setShowTripDestSuggestions(true);
+        }
+      } catch (err) {}
+    }, 500);
+    return () => clearTimeout(delayDebounceFn);
+  }, [tripDest]);
+
   useEffect(() => {
     if (!searchQuery.trim() || searchQuery.length < 3) {
       setSuggestions([]);
@@ -334,6 +380,84 @@ export default function LiveMap() {
     setIsSearching(false);
   };
 
+  const handlePlanTrip = async (e) => {
+    e.preventDefault();
+    if (!tripStart.trim() || !tripDest.trim()) return;
+    
+    if (tripStart.trim().toLowerCase() === tripDest.trim().toLowerCase()) {
+      alert("Start location and destination cannot be the same.");
+      return;
+    }
+
+    setIsPlanningTrip(true);
+    setLoading(true);
+    try {
+      // Nominatim requires User-Agent
+      const headers = { 'User-Agent': 'VeriChargeApp/1.0' };
+
+      // 1. Geocode Start
+      const startRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(tripStart)}`, { headers });
+      const startData = await startRes.json();
+      if (!startData || startData.length === 0) throw new Error("Start location not found");
+      const startLat = parseFloat(startData[0].lat);
+      const startLng = parseFloat(startData[0].lon);
+
+      await new Promise(r => setTimeout(r, 1000)); // Respect Nominatim 1req/s policy
+
+      // 2. Geocode Destination
+      const destRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(tripDest)}`, { headers });
+      const destData = await destRes.json();
+      if (!destData || destData.length === 0) throw new Error("Destination not found");
+      const endLat = parseFloat(destData[0].lat);
+      const endLng = parseFloat(destData[0].lon);
+
+      // 3. Fetch Route
+      const routeRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`);
+      const routeData = await routeRes.json();
+
+      if (routeData.routes && routeData.routes.length > 0) {
+        setRouteCoords(routeData.routes[0].geometry.coordinates);
+        setIsRouting(false);
+        setIsAutoFollow(false);
+        setSelectedStation(null);
+
+        // Center map on route
+        const centerLat = (startLat + endLat) / 2;
+        const centerLng = (startLng + endLng) / 2;
+        
+        // Calculate required radius to cover the route
+        const distKm = getDistance(startLat, startLng, endLat, endLng) / 1000;
+        const radius = Math.min(100, Math.max(20, distKm / 1.5)); // Fetch within sensible bounds
+        
+        setViewState(prev => ({
+          ...prev,
+          longitude: centerLng,
+          latitude: centerLat,
+          zoom: distKm > 100 ? 7 : distKm > 50 ? 9 : 11,
+          transitionDuration: 2000
+        }));
+
+        // 4. Fetch Stations along the route
+        let success = false;
+        for (const key of API_KEYS) {
+          try {
+            const res = await fetch(`https://api.openchargemap.io/v3/poi?key=${key}&latitude=${centerLat}&longitude=${centerLng}&distance=${radius}&distanceunit=KM&maxresults=100`);
+            if (!res.ok) continue;
+            const data = await res.json();
+            setStations(data);
+            success = true;
+            break;
+          } catch (err) {}
+        }
+        if (!success) alert("Failed to fetch charging stations along the route.");
+      }
+    } catch (err) {
+      alert("Failed to plan trip: " + err.message);
+    }
+    setLoading(false);
+    setIsPlanningTrip(false);
+  };
+
   const getSimulatedStationState = (station, timeMs) => {
     const id = station.ID || 1;
     const cycleDurationMinutes = (id % 30) + 20; // 20 to 49 minutes
@@ -583,36 +707,79 @@ export default function LiveMap() {
 
               {/* Search Bar & Live Location */}
               <div className="bg-[#161616]/95 backdrop-blur-xl border border-[#2c2c2c] rounded-2xl p-4 shadow-2xl pointer-events-auto shrink-0 flex flex-col gap-3">
-                <div className="relative">
-                  <form onSubmit={handleSearch} className="relative flex items-center">
-                    <input
-                      type="text"
-                      placeholder="Search by location..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
-                      className="w-full bg-[#111] border border-[#333] text-white text-sm rounded-xl pl-10 pr-20 py-3 focus:outline-none focus:border-volt-green transition-colors shadow-inner"
-                    />
-                    <svg className="absolute left-3.5 w-5 h-5 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" /></svg>
-                    <button type="submit" disabled={isSearching} className="absolute right-2 bg-volt-green text-black px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-[#b3cc00] transition-colors disabled:opacity-50">
-                      {isSearching ? '...' : 'SEARCH'}
+                
+                {/* Tabs */}
+                <div className="flex bg-[#111] rounded-lg p-1 border border-[#333]">
+                  <button onClick={() => setTripPlanMode(false)} className={`flex-1 text-xs font-bold py-2 rounded-md transition-colors ${!tripPlanMode ? 'bg-[#222] text-volt-green shadow-sm' : 'text-neutral-500 hover:text-white'}`}>AREA SEARCH</button>
+                  <button onClick={() => setTripPlanMode(true)} className={`flex-1 text-xs font-bold py-2 rounded-md transition-colors ${tripPlanMode ? 'bg-[#222] text-volt-green shadow-sm' : 'text-neutral-500 hover:text-white'}`}>TRIP PLANNER</button>
+                </div>
+
+                {tripPlanMode ? (
+                  <form onSubmit={handlePlanTrip} className="flex flex-col gap-2">
+                    <div className="relative flex items-center">
+                      <input type="text" placeholder="Start Location..." value={tripStart} onChange={(e) => setTripStart(e.target.value)} onFocus={() => { if (tripStartSuggestions.length > 0) setShowTripStartSuggestions(true); }} className="w-full bg-[#111] border border-[#333] text-white text-sm rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:border-volt-green transition-colors shadow-inner" />
+                      <svg className="absolute left-3.5 w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6" /></svg>
+                      {showTripStartSuggestions && tripStartSuggestions.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-[#111] border border-[#333] rounded-xl overflow-hidden z-[1010] shadow-2xl">
+                          {tripStartSuggestions.map((s, idx) => (
+                            <div key={idx} className="px-4 py-3 hover:bg-[#222] cursor-pointer text-sm text-neutral-300 border-b border-[#222] last:border-0" onClick={() => { setTripStart(s.display_name.split(',')[0]); setShowTripStartSuggestions(false); }}>
+                              <span className="text-white font-bold block">{s.display_name.split(',')[0]}</span>
+                              <span className="text-xs text-neutral-500 truncate block mt-0.5">{s.display_name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="relative flex items-center">
+                      <input type="text" placeholder="Destination..." value={tripDest} onChange={(e) => setTripDest(e.target.value)} onFocus={() => { if (tripDestSuggestions.length > 0) setShowTripDestSuggestions(true); }} className="w-full bg-[#111] border border-[#333] text-white text-sm rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:border-volt-green transition-colors shadow-inner" />
+                      <svg className="absolute left-3.5 w-4 h-4 text-volt-green" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15 8H9L12 2Z"/><path d="M12 22L9 16H15L12 22Z"/></svg>
+                      {showTripDestSuggestions && tripDestSuggestions.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-[#111] border border-[#333] rounded-xl overflow-hidden z-[1010] shadow-2xl">
+                          {tripDestSuggestions.map((s, idx) => (
+                            <div key={idx} className="px-4 py-3 hover:bg-[#222] cursor-pointer text-sm text-neutral-300 border-b border-[#222] last:border-0" onClick={() => { setTripDest(s.display_name.split(',')[0]); setShowTripDestSuggestions(false); }}>
+                              <span className="text-white font-bold block">{s.display_name.split(',')[0]}</span>
+                              <span className="text-xs text-neutral-500 truncate block mt-0.5">{s.display_name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button type="submit" disabled={isPlanningTrip} className="w-full bg-volt-green text-black py-2.5 rounded-xl text-xs font-bold hover:bg-[#b3cc00] transition-colors disabled:opacity-50 mt-1">
+                      {isPlanningTrip ? 'PLANNING ROUTE...' : 'FIND CHARGERS ALONG ROUTE'}
                     </button>
                   </form>
-                  {showSuggestions && suggestions.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-[#111] border border-[#333] rounded-xl overflow-hidden z-[1010] shadow-2xl">
-                      {suggestions.map((s, idx) => (
-                        <div
-                          key={idx}
-                          className="px-4 py-3 hover:bg-[#222] cursor-pointer text-sm text-neutral-300 border-b border-[#222] last:border-0 transition-colors"
-                          onClick={() => handleSuggestionClick(s)}
-                        >
-                          <span className="text-white font-bold block">{s.display_name.split(',')[0]}</span>
-                          <span className="text-xs text-neutral-500 truncate block mt-0.5">{s.display_name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                ) : (
+                  <div className="relative">
+                    <form onSubmit={handleSearch} className="relative flex items-center">
+                      <input
+                        type="text"
+                        placeholder="Search by location..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+                        className="w-full bg-[#111] border border-[#333] text-white text-sm rounded-xl pl-10 pr-20 py-3 focus:outline-none focus:border-volt-green transition-colors shadow-inner"
+                      />
+                      <svg className="absolute left-3.5 w-5 h-5 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" /></svg>
+                      <button type="submit" disabled={isSearching} className="absolute right-2 bg-volt-green text-black px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-[#b3cc00] transition-colors disabled:opacity-50">
+                        {isSearching ? '...' : 'SEARCH'}
+                      </button>
+                    </form>
+                    {showSuggestions && suggestions.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 mt-2 bg-[#111] border border-[#333] rounded-xl overflow-hidden z-[1010] shadow-2xl">
+                        {suggestions.map((s, idx) => (
+                          <div
+                            key={idx}
+                            className="px-4 py-3 hover:bg-[#222] cursor-pointer text-sm text-neutral-300 border-b border-[#222] last:border-0 transition-colors"
+                            onClick={() => handleSuggestionClick(s)}
+                          >
+                            <span className="text-white font-bold block">{s.display_name.split(',')[0]}</span>
+                            <span className="text-xs text-neutral-500 truncate block mt-0.5">{s.display_name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <button
                   onClick={() => {
@@ -643,7 +810,7 @@ export default function LiveMap() {
 
               <div className="bg-[#161616]/95 backdrop-blur-xl border border-[#2c2c2c] rounded-2xl p-5 shadow-2xl flex-1 flex flex-col overflow-hidden pointer-events-auto">
                 <div className="flex justify-between items-center mb-5 shrink-0">
-                  <h3 className="text-white font-semibold text-lg">{searchLocation ? 'Searched Area' : 'Nearby Stations'}</h3>
+                  <h3 className="text-white font-semibold text-lg">{tripPlanMode && routeCoords ? 'Stations on Route' : searchLocation ? 'Searched Area' : 'Nearby Stations'}</h3>
                 </div>
 
                 {/* Filters */}
