@@ -425,9 +425,7 @@ export default function LiveMap() {
         const centerLat = (startLat + endLat) / 2;
         const centerLng = (startLng + endLng) / 2;
         
-        // Calculate required radius to cover the route
         const distKm = getDistance(startLat, startLng, endLat, endLng) / 1000;
-        const radius = Math.min(100, Math.max(20, distKm / 1.5)); // Fetch within sensible bounds
         
         setViewState(prev => ({
           ...prev,
@@ -437,19 +435,35 @@ export default function LiveMap() {
           transitionDuration: 2000
         }));
 
-        // 4. Fetch Stations along the route
-        let success = false;
-        for (const key of API_KEYS) {
-          try {
-            const res = await fetch(`https://api.openchargemap.io/v3/poi?key=${key}&latitude=${centerLat}&longitude=${centerLng}&distance=${radius}&distanceunit=KM&maxresults=100`);
-            if (!res.ok) continue;
-            const data = await res.json();
-            setStations(data);
-            success = true;
-            break;
-          } catch (err) {}
+        // 4. Fetch Stations strictly along the polyline (Start, Destination, and Waypoints)
+        const coords = routeData.routes[0].geometry.coordinates; // [lng, lat]
+        const numSamples = Math.min(6, Math.max(3, Math.ceil(distKm / 40))); // Sample up to 6 points along the highway
+        const samplePoints = [];
+        for (let i = 0; i < numSamples; i++) {
+          const index = Math.floor((i / (numSamples - 1)) * (coords.length - 1));
+          samplePoints.push(coords[index]);
         }
-        if (!success) alert("Failed to fetch charging stations along the route.");
+
+        const radius = Math.min(30, Math.max(15, distKm / numSamples)); // Dynamic 15-30km radius around each city/point
+
+        // Distribute API requests across multiple keys to prevent rate limiting
+        const fetchPromises = samplePoints.map((pt, i) => {
+          const key = API_KEYS[i % API_KEYS.length];
+          return fetch(`https://api.openchargemap.io/v3/poi?key=${key}&latitude=${pt[1]}&longitude=${pt[0]}&distance=${radius}&distanceunit=KM&maxresults=40`)
+            .then(res => res.ok ? res.json() : [])
+            .catch(() => []);
+        });
+
+        const results = await Promise.all(fetchPromises);
+        const allStations = results.flat();
+
+        if (allStations.length > 0) {
+          // Remove duplicates based on station ID
+          const uniqueStations = Array.from(new Map(allStations.map(item => [item.ID, item])).values());
+          setStations(uniqueStations);
+        } else {
+          alert("No charging stations found along this route.");
+        }
       }
     } catch (err) {
       alert("Failed to plan trip: " + err.message);
