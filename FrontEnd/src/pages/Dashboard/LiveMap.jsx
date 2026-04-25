@@ -32,6 +32,9 @@ export default function LiveMap() {
   const [navInstruction, setNavInstruction] = useState(null);
   
   const [hasFetchedStations, setHasFetchedStations] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchLocation, setSearchLocation] = useState(null);
   const locationRef = useRef(null);
   const navigate = useNavigate();
 
@@ -47,6 +50,12 @@ export default function LiveMap() {
   const isAutoFollowRef = useRef(isAutoFollow);
   useEffect(() => { isRoutingRef.current = isRouting; }, [isRouting]);
   useEffect(() => { isAutoFollowRef.current = isAutoFollow; }, [isAutoFollow]);
+
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 10000); // 10s tick
+    return () => clearInterval(interval);
+  }, []);
   
   const API_KEYS = [
     'b506fd81-d7b5-463d-a901-62b5f5c35b42',
@@ -137,40 +146,37 @@ export default function LiveMap() {
     return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
+  const fetchStationsForLocation = async (lat, lng) => {
+    setLoading(true);
+    let success = false;
+    for (const key of API_KEYS) {
+      try {
+        const res = await fetch(`https://api.openchargemap.io/v3/poi?key=${key}&latitude=${lat}&longitude=${lng}&distance=30&distanceunit=KM&maxresults=30`);
+        if (!res.ok) continue;
+        const data = await res.json();
+        setStations(data);
+        success = true;
+        break;
+      } catch (err) {
+        console.error(`API Fetch Error with key ${key}:`, err);
+      }
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
     if (!location || hasFetchedStations) return;
-
-    const fetchStations = async () => {
-      setLoading(true);
-      setHasFetchedStations(true);
-      
-      // Setup initial view
-      setViewState(prev => ({
-         ...prev,
-         longitude: location.lng,
-         latitude: location.lat,
-         zoom: 14,
-         transitionDuration: 2000
-      }));
-
-      let success = false;
-      for (const key of API_KEYS) {
-        try {
-          const res = await fetch(`https://api.openchargemap.io/v3/poi?key=${key}&latitude=${location.lat}&longitude=${location.lng}&distance=30&distanceunit=KM&maxresults=30`);
-          if (!res.ok) continue;
-          const data = await res.json();
-          setStations(data);
-          success = true;
-          break;
-        } catch (err) {
-          console.error(`API Fetch Error with key ${key}:`, err);
-        }
-      }
-      
-      setLoading(false);
-    };
     
-    fetchStations();
+    setHasFetchedStations(true);
+    setViewState(prev => ({
+       ...prev,
+       longitude: location.lng,
+       latitude: location.lat,
+       zoom: 14,
+       transitionDuration: 2000
+    }));
+    
+    fetchStationsForLocation(location.lat, location.lng);
   }, [location, hasFetchedStations]);
 
   useEffect(() => {
@@ -233,6 +239,87 @@ export default function LiveMap() {
       console.error("Failed to fetch route:", err);
       setIsRouting(false);
     }
+  };
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    
+    setIsSearching(true);
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+      const data = await res.json();
+      if (data && data.length > 0) {
+        const result = data[0];
+        const lat = parseFloat(result.lat);
+        const lng = parseFloat(result.lon);
+        
+        setSearchLocation({ lat, lng });
+        setSelectedStation(null);
+        setRouteCoords(null);
+        setIsRouting(false);
+        setIsAutoFollow(false);
+        
+        setViewState(prev => ({
+           ...prev,
+           longitude: lng,
+           latitude: lat,
+           zoom: 14,
+           transitionDuration: 2000
+        }));
+        
+        fetchStationsForLocation(lat, lng);
+      } else {
+        alert("Location not found. Please try a different search.");
+      }
+    } catch (err) {
+      console.error("Search error:", err);
+      alert("Failed to search location. Please try again later.");
+    }
+    setIsSearching(false);
+  };
+
+  const getSimulatedStationState = (station, timeMs) => {
+    const id = station.ID || 1;
+    const cycleDurationMinutes = (id % 30) + 20; // 20 to 49 minutes
+    const cycleDurationMs = cycleDurationMinutes * 60 * 1000;
+    
+    const timeInCycle = timeMs % cycleDurationMs;
+    const isOccupiedPhase = timeInCycle < (cycleDurationMs * 0.8);
+    
+    if (isOccupiedPhase) {
+      const occupiedTimeRemainingMs = (cycleDurationMs * 0.8) - timeInCycle;
+      const waitMins = Math.ceil(occupiedTimeRemainingMs / 60000);
+      return { status: 'OCCUPIED', waitTime: waitMins };
+    } else {
+      return { status: 'AVAILABLE', waitTime: 0 };
+    }
+  };
+
+  const getAvailabilityStatus = (station, timeMs) => {
+    // 1. Check actual OpenChargeMap API real-time data first
+    if (station.StatusType?.IsOperational === false || station.StatusType?.ID === 100) return { status: 'OFFLINE', waitTime: 'N/A' };
+    if (station.StatusType?.ID === 20 || station.StatusType?.ID === 210) return { status: 'OCCUPIED', waitTime: 'Unknown' };
+    
+    if (station.Connections && station.Connections.length > 0) {
+      const anyInUse = station.Connections.some(c => c.StatusType?.ID === 20 || c.StatusTypeID === 20 || c.StatusTypeID === 210);
+      if (anyInUse) return { status: 'OCCUPIED', waitTime: 'Unknown' };
+      
+      const allOut = station.Connections.every(c => c.StatusType?.ID === 100 || c.StatusTypeID === 100 || c.StatusType?.IsOperational === false);
+      if (allOut) return { status: 'OFFLINE', waitTime: 'N/A' };
+    }
+    
+    // 2. Fallback to simulation to ensure UI can be demonstrated since OCM often lacks live telemetry
+    if (station.ID && station.ID % 13 === 0) return { status: 'OFFLINE', waitTime: 'N/A' };
+    if (station.ID && station.ID % 3 === 0) return getSimulatedStationState(station, timeMs);
+
+    return { status: 'AVAILABLE', waitTime: 0 };
+  };
+
+  const getStatusColors = (status) => {
+    if (status === 'AVAILABLE') return { bg: 'bg-volt-green', border: 'border-volt-green', text: 'text-volt-green', icon: 'text-black', shadow: 'shadow-[0_0_20px_rgba(204,230,0,0.4)]' };
+    if (status === 'OCCUPIED') return { bg: 'bg-yellow-500', border: 'border-yellow-500', text: 'text-yellow-500', icon: 'text-black', shadow: 'shadow-[0_0_20px_rgba(234,179,8,0.4)]' };
+    return { bg: 'bg-[#111]', border: 'border-neutral-500', text: 'text-neutral-500', icon: 'text-neutral-500', shadow: '' };
   };
 
   const getPower = (connections) => {
@@ -306,7 +393,9 @@ export default function LiveMap() {
 
             {/* Station Markers (Billboard style - always upright) */}
             {!loading && stations.map((station, index) => {
-              const isOperational = station.StatusType?.IsOperational !== false;
+              const statusInfo = getAvailabilityStatus(station, now);
+              const status = statusInfo.status;
+              const colors = getStatusColors(status);
               const power = getPower(station.Connections);
               const lng = station.AddressInfo.Longitude;
               const lat = station.AddressInfo.Latitude;
@@ -324,13 +413,13 @@ export default function LiveMap() {
                   style={{ zIndex: selectedStation?.ID === station.ID ? 10 : 1 }}
                 >
                   <div className={`flex flex-col items-center group cursor-pointer hover:scale-110 transition-transform origin-bottom ${selectedStation?.ID === station.ID ? 'scale-110' : ''}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 border-2 ${isOperational ? 'bg-volt-green border-volt-green shadow-[0_0_20px_rgba(204,230,0,0.4)]' : 'bg-[#111] border-neutral-500'}`}>
-                      <svg className={`w-4 h-4 ${isOperational ? 'text-black' : 'text-neutral-500'}`} viewBox="0 0 24 24" fill="currentColor">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 border-2 ${colors.bg} ${colors.border} ${colors.shadow}`}>
+                      <svg className={`w-4 h-4 ${colors.icon}`} viewBox="0 0 24 24" fill="currentColor">
                         <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
                       </svg>
                     </div>
-                    <div className={`bg-[#111] border text-[10px] font-bold px-2.5 py-1 rounded-full whitespace-nowrap ${isOperational ? 'border-volt-green text-volt-green' : 'border-[#333] text-neutral-500'} shadow-lg`}>
-                      {power}kW • {isOperational ? 'FREE' : 'OFFLINE'}
+                    <div className={`bg-[#111] border text-[10px] font-bold px-2.5 py-1 rounded-full whitespace-nowrap ${colors.border} ${colors.text} shadow-lg`}>
+                      {power}kW • {status}
                     </div>
                   </div>
                 </Marker>
@@ -412,6 +501,11 @@ export default function LiveMap() {
               onClick={() => { 
                 setIsAutoFollow(true);
                 if (location) {
+                  if (searchLocation) {
+                    setSearchLocation(null);
+                    setSearchQuery('');
+                    fetchStationsForLocation(location.lat, location.lng);
+                  }
                   setViewState(prev => ({
                     ...prev,
                     longitude: location.lng,
@@ -433,9 +527,53 @@ export default function LiveMap() {
           {/* Left Floating Panel (Nearby Stations) */}
           {!isRouting && (
             <div className="absolute top-6 left-6 md:w-[360px] w-full px-6 md:px-0 flex flex-col gap-4 z-[1000] h-[calc(100%-48px)] pointer-events-none">
+              
+              {/* Search Bar & Live Location */}
+              <div className="bg-[#161616]/95 backdrop-blur-xl border border-[#2c2c2c] rounded-2xl p-4 shadow-2xl pointer-events-auto shrink-0 flex flex-col gap-3">
+                <form onSubmit={handleSearch} className="relative flex items-center">
+                  <input 
+                    type="text" 
+                    placeholder="Search by location..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-[#111] border border-[#333] text-white text-sm rounded-xl pl-10 pr-20 py-3 focus:outline-none focus:border-volt-green transition-colors shadow-inner"
+                  />
+                  <svg className="absolute left-3.5 w-5 h-5 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35"/></svg>
+                  <button type="submit" disabled={isSearching} className="absolute right-2 bg-volt-green text-black px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-[#b3cc00] transition-colors disabled:opacity-50">
+                    {isSearching ? '...' : 'SEARCH'}
+                  </button>
+                </form>
+                
+                <button 
+                  onClick={() => {
+                    setIsAutoFollow(true);
+                    if (location) {
+                      if (searchLocation) {
+                        setSearchLocation(null);
+                        setSearchQuery('');
+                        fetchStationsForLocation(location.lat, location.lng);
+                      }
+                      setViewState(prev => ({
+                        ...prev,
+                        longitude: location.lng,
+                        latitude: location.lat,
+                        zoom: isRouting ? 18 : 14,
+                        pitch: isRouting ? 65 : 0,
+                        bearing: isRouting ? heading : 0,
+                        transitionDuration: 1000
+                      }));
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-2 bg-[#1c2c20] hover:bg-[#253a2a] border border-volt-green/30 text-volt-green py-2.5 rounded-xl text-[11px] font-bold tracking-widest transition-colors shadow-inner"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  NAVIGATE TO LIVE LOCATION
+                </button>
+              </div>
+
               <div className="bg-[#161616]/95 backdrop-blur-xl border border-[#2c2c2c] rounded-2xl p-5 shadow-2xl flex-1 flex flex-col overflow-hidden pointer-events-auto">
                 <div className="flex justify-between items-center mb-5 shrink-0">
-                  <h3 className="text-white font-semibold text-lg">Nearby Stations</h3>
+                  <h3 className="text-white font-semibold text-lg">{searchLocation ? 'Searched Area' : 'Nearby Stations'}</h3>
                 </div>
 
                 {/* Filters */}
@@ -456,21 +594,25 @@ export default function LiveMap() {
                     <div className="text-center text-neutral-500 text-sm mt-10">No stations found nearby.</div>
                   ) : (
                     stations.map((station, i) => {
-                      const isOp = station.StatusType?.IsOperational !== false;
+                      const statusInfo = getAvailabilityStatus(station, now);
+                      const status = statusInfo.status;
+                      const waitTime = statusInfo.waitTime;
+                      const isOp = status !== 'OFFLINE';
+                      const isAvail = status === 'AVAILABLE';
                       const power = getPower(station.Connections);
                       
                       return (
                         <div 
                           key={station.ID || i} 
                           onClick={() => setSelectedStation(station)} 
-                          className={`bg-[#1c1c1c] border border-[#2c2c2c] rounded-xl p-4 transition-colors cursor-pointer group ${isOp ? 'hover:border-volt-green/50 hover:bg-[#1c2c20]' : 'opacity-60'} ${selectedStation?.ID === station.ID ? 'border-volt-green/50 bg-[#1c2c20]' : ''}`}
+                          className={`bg-[#1c1c1c] border border-[#2c2c2c] rounded-xl p-4 transition-colors cursor-pointer group ${isOp ? (isAvail ? 'hover:border-volt-green/50 hover:bg-[#1c2c20]' : 'hover:border-yellow-500/50 hover:bg-[#2c2a1c]') : 'opacity-60'} ${selectedStation?.ID === station.ID ? (isAvail ? 'border-volt-green/50 bg-[#1c2c20]' : status === 'OCCUPIED' ? 'border-yellow-500/50 bg-[#2c2a1c]' : 'border-neutral-500 bg-[#222]') : ''}`}
                         >
                           <div className="flex justify-between items-start mb-2">
-                            <h4 className={`text-[15px] font-bold truncate pr-2 ${isOp ? 'text-white group-hover:text-volt-green transition-colors' : 'text-neutral-400'} ${selectedStation?.ID === station.ID ? 'text-volt-green' : ''}`}>
+                            <h4 className={`text-[15px] font-bold truncate pr-2 ${isOp ? (isAvail ? 'text-white group-hover:text-volt-green transition-colors' : 'text-white group-hover:text-yellow-500 transition-colors') : 'text-neutral-400'} ${selectedStation?.ID === station.ID ? (isAvail ? 'text-volt-green' : status === 'OCCUPIED' ? 'text-yellow-500' : 'text-neutral-500') : ''}`}>
                               {station.AddressInfo.Title}
                             </h4>
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold tracking-widest uppercase flex items-center gap-1 shrink-0 ${isOp ? 'bg-[#333] text-neutral-300' : 'bg-[#333] text-neutral-500'}`}>
-                              {isOp && power >= 150 ? 'DC FAST' : isOp ? 'LEVEL 2' : 'OFFLINE'}
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold tracking-widest uppercase flex items-center gap-1 shrink-0 ${isAvail ? 'bg-volt-green/20 text-volt-green' : status === 'OCCUPIED' ? 'bg-yellow-500/20 text-yellow-500' : 'bg-[#333] text-neutral-500'}`}>
+                              {status === 'AVAILABLE' ? (power >= 150 ? 'FAST • FREE' : 'L2 • FREE') : status}
                             </span>
                           </div>
                           <p className="text-neutral-400 text-[10px] font-bold tracking-widest uppercase mb-3 truncate">
@@ -478,13 +620,13 @@ export default function LiveMap() {
                           </p>
                           
                           <div className="flex items-center gap-6 mt-1">
-                            <div className="flex items-center gap-1.5 text-volt-green">
+                            <div className={`flex items-center gap-1.5 ${isAvail ? 'text-volt-green' : status === 'OCCUPIED' ? 'text-yellow-500' : 'text-neutral-500'}`}>
                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                                <span className="font-bold text-[15px]">{power} <span className="text-[11px] text-neutral-400 font-medium">kW</span></span>
                             </div>
                             <div className="flex items-center gap-1.5 text-neutral-300">
                                <svg className="w-4 h-4 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2"/></svg>
-                               <span className="text-[13px]">Wait: <span className="text-volt-green font-medium">0 mins</span></span>
+                               <span className="text-[13px]">Wait: <span className={isAvail ? 'text-volt-green font-medium' : status === 'OCCUPIED' ? 'text-yellow-500 font-medium' : 'text-neutral-500 font-medium'}>{isAvail ? '0 mins' : status === 'OCCUPIED' ? `${waitTime} mins` : 'N/A'}</span></span>
                             </div>
                           </div>
 
@@ -514,10 +656,18 @@ export default function LiveMap() {
                 </div>
                 <div className="flex-1 pr-4 pt-1">
                   <h3 className="text-white font-bold text-[17px] leading-tight mb-1">{selectedStation.AddressInfo.Title}</h3>
-                  <p className="text-volt-green text-[9px] font-bold tracking-widest uppercase flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 bg-volt-green rounded-full shadow-[0_0_8px_rgba(204,230,0,0.8)]"></span>
-                    {selectedStation.StatusType?.IsOperational !== false ? 'ULTRA-FAST RELIABLE PARTNER' : 'CURRENTLY OFFLINE'}
-                  </p>
+                  {(() => {
+                    const statusInfo = getAvailabilityStatus(selectedStation, now);
+                    const status = statusInfo.status;
+                    const waitTime = statusInfo.waitTime;
+                    const isAvail = status === 'AVAILABLE';
+                    return (
+                      <p className={`${isAvail ? 'text-volt-green' : status === 'OCCUPIED' ? 'text-yellow-500' : 'text-neutral-500'} text-[9px] font-bold tracking-widest uppercase flex items-center gap-1.5`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${isAvail ? 'bg-volt-green shadow-[0_0_8px_rgba(204,230,0,0.8)]' : status === 'OCCUPIED' ? 'bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.8)]' : 'bg-neutral-500'}`}></span>
+                        {isAvail ? 'ULTRA-FAST RELIABLE PARTNER' : status === 'OCCUPIED' ? `CURRENTLY IN USE (${waitTime} MINS WAIT)` : 'CURRENTLY OFFLINE'}
+                      </p>
+                    );
+                  })()}
                 </div>
                 <button 
                   className="text-neutral-500 hover:text-white absolute top-4 right-4"
