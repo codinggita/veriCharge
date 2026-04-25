@@ -14,11 +14,12 @@
 
 ## 🚀 The Problem We Solve
 
-EV drivers frequently experience **"range anxiety"**—the fear of running out of power before reaching a station. This is compounded by arriving at a station only to find the chargers broken, incompatible, or occupied with a long waiting queue. VeriCharge solves this fragmented experience through three core pillars:
+EV drivers frequently experience **"range anxiety"**—the fear of running out of power before reaching a station. This is compounded by arriving at a station only to find the chargers broken, incompatible, or occupied with a long waiting queue. VeriCharge solves this fragmented experience through four core pillars:
 
 1. **Intelligent Location Discovery**: Instantly scans your current geographic coordinates to pinpoint the nearest operational, high-powered EV charging stations around you.
 2. **Predictive Availability Tracking**: Eliminates the frustration of arriving at a full station. VeriCharge provides live telemetry to show you exactly *which* chargers are currently free, their power output (kW), and predicts the exact wait time in minutes for occupied stalls.
 3. **Turn-by-Turn Navigation & Reach Time**: Dynamically calculates your real-time travel ETA to any station and seamlessly launches turn-by-turn routing directly within the dashboard, keeping the map camera intelligently rotated in your direction of travel.
+4. **Long-Distance Route Planning**: Enter any starting point and final destination, and the platform will plot your entire journey while intelligently displaying all compatible charging stations located along your specific route.
 
 ## 📡 Third-Party API Integrations
 
