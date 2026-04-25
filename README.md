@@ -34,12 +34,14 @@ To power the live data ecosystem, VeriCharge seamlessly orchestrates several pow
 The frontend is built with modern, high-performance web technologies:
 
 - **[React](https://react.dev/) (`react`, `react-dom`)**: The core UI library used to build the interactive, component-based dashboard.
-- **[Vite](https://vitejs.dev/)**: Next-generation frontend build tool providing an ultra-fast development server and optimized production bundles.
-- **[Tailwind CSS](https://tailwindcss.com/)**: Utility-first CSS framework powering the premium, responsive dark-mode aesthetic and complex layout designs.
+- **[Vite](https://vitejs.dev/) (`vite`, `@vitejs/plugin-react`)**: Next-generation frontend build tool providing an ultra-fast development server and optimized production bundles.
+- **[Tailwind CSS](https://tailwindcss.com/) (`tailwindcss`)**: Utility-first CSS framework powering the premium, responsive dark-mode aesthetic and complex layout designs.
 - **[React Router](https://reactrouter.com/) (`react-router-dom`)**: Handles seamless, client-side routing between the Live Map, History, Reliability, and Support pages without reloading the app.
 - **[MapLibre GL JS](https://maplibre.org/) (`maplibre-gl`)**: An open-source, WebGL-based mapping engine used to render the highly interactive, hardware-accelerated 3D live navigation map.
 - **[React Map GL](https://visgl.github.io/react-map-gl/) (`react-map-gl`)**: Provides React components and hooks for MapLibre, allowing us to declaratively render the map, user location tracking arrow, and charging station markers.
 - **[Leaflet](https://leafletjs.com/) (`leaflet`, `react-leaflet`)**: Open-source mapping libraries retained for legacy 2D map rendering or lightweight fallback views.
+- **[ESLint](https://eslint.org/) (`eslint`, `eslint-plugin-react-hooks`, `eslint-plugin-react-refresh`)**: Pluggable JavaScript linter to enforce code quality, find syntax errors, and maintain React best practices.
+- **[PostCSS & Autoprefixer](https://postcss.org/) (`postcss`, `autoprefixer`)**: CSS transformation tools used alongside Tailwind to automatically parse CSS and add vendor prefixes, ensuring complete cross-browser compatibility.
 
 ## 📍 Location Access & GPS Tracking
 
